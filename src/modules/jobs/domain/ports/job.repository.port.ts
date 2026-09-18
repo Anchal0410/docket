@@ -27,6 +27,16 @@ export interface FailJobInput {
     backoff: BackoffParams;
 }
 
+export interface ListDeadLetterJobsInput {
+    limit: number;
+    offset: number;
+}
+
+export interface ListDeadLetterJobsResult {
+    jobs: JobVO[];
+    total: number;
+}
+
 export interface IJobRepository {
     /**
      * Insert a new job. If `idempotencyKey` is set and already belongs to an
@@ -91,4 +101,23 @@ export interface IJobRepository {
      * for why both exist.
      */
     reclaimExpiredLeases(): Promise<number>;
+
+    /**
+     * Promote PENDING jobs whose `run_at` has arrived to QUEUED — claim only
+     * ever looks at QUEUED, so this is what actually activates a delayed or
+     * scheduled job. Returns the count promoted.
+     */
+    promotePendingJobs(): Promise<number>;
+
+    /** List DEAD_LETTER jobs, most recently dead-lettered first. */
+    listDeadLetter(
+        input: ListDeadLetterJobsInput,
+    ): Promise<ListDeadLetterJobsResult>;
+
+    /**
+     * Reset a DEAD_LETTER job back to QUEUED with attempts cleared to 0, for
+     * a manual retry. Throws AppError.conflict if the job isn't DEAD_LETTER
+     * (including if it doesn't exist).
+     */
+    retryDeadLetterJob(jobId: string): Promise<JobVO>;
 }

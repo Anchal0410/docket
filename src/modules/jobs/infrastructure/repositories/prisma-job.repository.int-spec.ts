@@ -196,4 +196,95 @@ describe("PrismaJobRepository.claim (integration)", () => {
     it("reclaimFromDeadWorkers is a no-op for an empty list", async () => {
         expect(await repo.reclaimFromDeadWorkers([])).toBe(0);
     });
+
+    it("promotePendingJobs queues only PENDING jobs whose run_at has arrived", async () => {
+        const due = await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "PENDING",
+                runAt: new Date(Date.now() - 1000),
+            },
+        });
+        const notYetDue = await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "PENDING",
+                runAt: new Date(Date.now() + 60_000),
+            },
+        });
+
+        const count = await repo.promotePendingJobs();
+
+        expect(count).toBe(1);
+        expect(
+            (await db.prisma.job.findUniqueOrThrow({ where: { id: due.id } }))
+                .status,
+        ).toBe("QUEUED");
+        expect(
+            (
+                await db.prisma.job.findUniqueOrThrow({
+                    where: { id: notYetDue.id },
+                })
+            ).status,
+        ).toBe("PENDING");
+    });
+
+    it("listDeadLetter paginates DEAD_LETTER jobs, most recent first", async () => {
+        await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "DEAD_LETTER",
+                lastError: "boom",
+            },
+        });
+        await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "QUEUED",
+            },
+        });
+
+        const page = await repo.listDeadLetter({ limit: 10, offset: 0 });
+
+        expect(page.total).toBe(1);
+        expect(page.jobs).toHaveLength(1);
+        expect(page.jobs[0].status).toBe("DEAD_LETTER");
+    });
+
+    it("retryDeadLetterJob requeues with attempts reset, and rejects a job that isn't dead-lettered", async () => {
+        const deadLettered = await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "DEAD_LETTER",
+                attempts: 5,
+                maxAttempts: 5,
+                lastError: "boom",
+            },
+        });
+        const stillQueued = await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "QUEUED",
+            },
+        });
+
+        await expect(repo.retryDeadLetterJob(stillQueued.id)).rejects.toThrow();
+
+        const retried = await repo.retryDeadLetterJob(deadLettered.id);
+        expect(retried.status).toBe("QUEUED");
+        expect(retried.attempts).toBe(0);
+        expect(retried.lastError).toBeNull();
+    });
 });

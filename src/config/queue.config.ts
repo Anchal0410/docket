@@ -19,4 +19,8 @@ export default registerAs("queue", () => ({
         process.env.QUEUE_RECOVERY_INTERVAL_MS ?? "5000",
         10,
     ),
+    promotionIntervalMs: parseInt(
+        process.env.QUEUE_PROMOTION_INTERVAL_MS ?? "1000",
+        10,
+    ),
 }));

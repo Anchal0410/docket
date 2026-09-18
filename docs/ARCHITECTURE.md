@@ -40,6 +40,7 @@ stateDiagram-v2
     PROCESSING --> QUEUED: fail, attempts < max (backoff)
     PROCESSING --> DEAD_LETTER: fail, attempts = max
     PROCESSING --> QUEUED: lease expired / worker dead
+    DEAD_LETTER --> QUEUED: manual retry (attempts reset)
 ```
 
 No separate FAILED/RETRY state — a retry is the PROCESSING → QUEUED edge with
@@ -47,6 +48,9 @@ No separate FAILED/RETRY state — a retry is the PROCESSING → QUEUED edge wit
 
 - **Claim**: `SELECT … FOR UPDATE SKIP LOCKED` — concurrent claims never
   block each other or double-hand a job.
+- **Promotion**: a scheduler tick promotes `PENDING → QUEUED` once `run_at`
+  arrives — claim only ever looks at `QUEUED`, so this is what actually
+  activates a delayed or scheduled job.
 - **Lease**: a claimed job gets `lease_expires_at`; a worker that dies
   without acking loses the job back to the pool.
 - **Heartbeat + recovery**: workers ping every ~5s; a broker loop marks

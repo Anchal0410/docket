@@ -4,11 +4,11 @@ A distributed job queue: a broker service (NestJS + Fastify + Postgres) that
 accepts jobs over HTTP and hands them to a fleet of workers that register
 their capabilities, claim work, and report back.
 
-Build plan through Phase 2: submit jobs, register workers, claim/ack/fail
-with a visibility-timeout lease, retries with exponential backoff, a
-dead-letter state, heartbeats, and automatic recovery of jobs abandoned by
-workers that crash. Priorities, delayed/scheduled jobs, and the DLQ browse
-API land in Phase 3.
+Build plan through Phase 3: submit jobs (with priority and delayed/scheduled
+run times), register workers, claim/ack/fail with a visibility-timeout
+lease, retries with exponential backoff, a dead-letter state with a browse
+and manual-retry API, heartbeats, and automatic recovery of jobs abandoned
+by workers that crash.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the stack/structure
 decisions and core mechanisms, and [docs/PLAN.md](docs/PLAN.md) for the
@@ -74,6 +74,8 @@ pnpm db:generate      # regenerate Prisma client after schema changes
 | `POST /jobs/:id/ack` | worker | mark completed, store result |
 | `POST /jobs/:id/fail` | worker | retry with backoff, or dead-letter at `maxAttempts` |
 | `POST /jobs/:id/lease/renew` | worker | extend the lease for a long-running handler |
+| `GET /dead-letter-jobs` | operator | list dead-lettered jobs, paginated |
+| `POST /dead-letter-jobs/:id/retry` | operator | requeue a dead-lettered job with attempts reset |
 
 ## Worker-failure recovery
 
@@ -121,8 +123,12 @@ The worker (`worker/`) is a standalone plain-TS program (no NestJS), run via
 PENDING ──run_at──▶ QUEUED ──claim──▶ PROCESSING ──ack──▶ COMPLETED
                       ▲                    │
                       └── fail (backoff) ──┤
-                                           └── fail @ maxAttempts ──▶ DEAD_LETTER
+                      │                    └── fail @ maxAttempts ──▶ DEAD_LETTER
+                      └──────────────── retry (attempts reset) ───────────┘
 ```
+
+A `PENDING` job is promoted to `QUEUED` by a scheduler tick (`QUEUE_PROMOTION_INTERVAL_MS`)
+once its `run_at` arrives — claim only ever looks at `QUEUED`.
 
 Delivery is **at-least-once**: a worker can finish the work and die before its
 ack lands, so the job runs again. Make handlers idempotent.

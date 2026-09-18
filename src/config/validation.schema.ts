@@ -14,4 +14,5 @@ export const validationSchema = Joi.object({
     QUEUE_BACKOFF_MAX_SECONDS: Joi.number().min(1).default(3600),
     QUEUE_DEAD_WORKER_THRESHOLD_SECONDS: Joi.number().min(1).default(15),
     QUEUE_RECOVERY_INTERVAL_MS: Joi.number().min(500).default(5000),
+    QUEUE_PROMOTION_INTERVAL_MS: Joi.number().min(200).default(1000),
 });

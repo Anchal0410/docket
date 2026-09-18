@@ -8,6 +8,8 @@ import {
     type ClaimJobsInput,
     type FailJobInput,
     type IJobRepository,
+    type ListDeadLetterJobsInput,
+    type ListDeadLetterJobsResult,
     type SubmitJobInput,
 } from "../../domain/ports/job.repository.port.js";
 import { backoffDelaySeconds } from "../../domain/value-objects/backoff.vo.js";
@@ -19,6 +21,8 @@ import type {
 
 const LEASE_GUARD_FAILED =
     "Job is not currently leased by this worker — its lease may have expired.";
+const DEAD_LETTER_GUARD_FAILED =
+    "Job is not in DEAD_LETTER state, or does not exist.";
 
 // Shape of a raw `jobs` row (snake_case columns) returned by $queryRaw.
 interface JobRow {
@@ -197,6 +201,49 @@ export class PrismaJobRepository implements IJobRepository {
                 lease_expires_at = NULL, updated_at = now()
             WHERE status = 'PROCESSING' AND lease_expires_at < now();
         `);
+    }
+
+    async promotePendingJobs(): Promise<number> {
+        // now() is the DB clock — same rule as reclaimExpiredLeases.
+        return this.prisma.$executeRaw(Prisma.sql`
+            UPDATE jobs SET status = 'QUEUED', updated_at = now()
+            WHERE status = 'PENDING' AND run_at <= now();
+        `);
+    }
+
+    async listDeadLetter(
+        input: ListDeadLetterJobsInput,
+    ): Promise<ListDeadLetterJobsResult> {
+        const { limit, offset } = input;
+        const [rows, total] = await Promise.all([
+            this.prisma.job.findMany({
+                where: { status: "DEAD_LETTER" },
+                orderBy: { updatedAt: "desc" },
+                take: limit,
+                skip: offset,
+            }),
+            this.prisma.job.count({ where: { status: "DEAD_LETTER" } }),
+        ]);
+        return { jobs: rows.map((r) => this.toDomain(r)), total };
+    }
+
+    async retryDeadLetterJob(jobId: string): Promise<JobVO> {
+        const updated = await this.prisma.job.updateMany({
+            where: { id: jobId, status: "DEAD_LETTER" },
+            data: {
+                status: "QUEUED",
+                attempts: 0,
+                lastError: null,
+                runAt: new Date(),
+            },
+        });
+        if (updated.count === 0) {
+            throw AppError.conflict(DEAD_LETTER_GUARD_FAILED);
+        }
+
+        return this.toDomain(
+            await this.prisma.job.findUniqueOrThrow({ where: { id: jobId } }),
+        );
     }
 
     private isDue(runAt: Date): boolean {

@@ -13,6 +13,9 @@ export function makeJobRepositoryMock(
         renewLease: jest.fn(),
         reclaimFromDeadWorkers: jest.fn(),
         reclaimExpiredLeases: jest.fn(),
+        promotePendingJobs: jest.fn(),
+        listDeadLetter: jest.fn(),
+        retryDeadLetterJob: jest.fn(),
         ...overrides,
     } as jest.Mocked<IJobRepository>;
 }
