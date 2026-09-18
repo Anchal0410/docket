@@ -1,5 +1,7 @@
 # Docket
 
+**[Landing page →](https://anchal0410.github.io/docket/)**
+
 A distributed job queue: a broker service (NestJS + Fastify + Postgres) that
 accepts jobs over HTTP and hands them to a fleet of workers that register
 their capabilities, claim work, and report back.
@@ -52,6 +54,17 @@ JOBS=5000 CONCURRENCY=50 ./scripts/load-test.sh   # throughput under real concur
 `docker kill`ed workers stay down (Docker suppresses the restart policy on an
 external kill); the recovery loop reclaims their jobs anyway. Bring the fleet
 back with `docker compose up -d --scale worker=4`.
+
+## Landing page & public demo
+
+`site/` is a static landing page (no framework, no build step), deployed to
+GitHub Pages via `.github/workflows/pages.yml` on every push to `main`.
+
+It includes a live-demo widget that submits a real job to a deployed broker
+and polls its status. That needs a backend actually running somewhere —
+`render.yaml` is a Blueprint for Render's free tier (broker + worker
+colocated in one process, since free tiers don't offer a separate free
+background-worker type). See `docs/DEPLOYING.md` for the exact steps.
 
 ## Backpressure
 
