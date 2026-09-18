@@ -6,6 +6,7 @@ export const validationSchema = Joi.object({
         .required(),
     PORT: Joi.number().default(3000),
     SWAGGER_ENABLED: Joi.boolean().default(false),
+    CORS_ORIGINS: Joi.string().allow("").default(""),
     DATABASE_URL: Joi.string().uri().required(),
 
     QUEUE_LEASE_SECONDS: Joi.number().min(1).default(30),

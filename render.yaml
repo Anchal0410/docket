@@ -1,0 +1,34 @@
+# Render Blueprint for the public demo instance. Deploy via "New Blueprint
+# Instance" on Render, pointing at this repo -- it prompts for the `sync:
+# false` values (DATABASE_URL, CORS_ORIGINS) during setup.
+#
+# This hosts broker + worker colocated in one free instance (see
+# scripts/demo-entrypoint.sh for why) with a smaller backlog/rate-limit
+# ceiling than local defaults, since this instance is public. It needs an
+# external Postgres -- Render's own free Postgres expires after 30 days;
+# a Neon free database (neon.tech) doesn't.
+services:
+  - name: docket-demo
+    type: web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh scripts/demo-entrypoint.sh
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SWAGGER_ENABLED
+        value: "true"
+      - key: DATABASE_URL
+        sync: false # your Neon (or other external Postgres) connection string
+      - key: CORS_ORIGINS
+        sync: false # your GitHub Pages URL, e.g. https://<user>.github.io
+      - key: QUEUE_MAX_BACKLOG_DEPTH
+        value: "200"
+      - key: RATE_LIMIT_MAX
+        value: "30"
+      - key: RATE_LIMIT_TTL_MS
+        value: "60000"
+      - key: WORKER_CAPABILITIES
+        value: send_email,generate_report

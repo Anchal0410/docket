@@ -26,6 +26,11 @@ async function bootstrap(): Promise<void> {
 
     const config = app.get(ConfigService);
 
+    const corsOrigins = config.get<string[]>("app.corsOrigins") ?? [];
+    if (corsOrigins.length > 0) {
+        app.enableCors({ origin: corsOrigins });
+    }
+
     app.getHttpAdapter().getInstance().addHook("onRequest", traceIdHook);
 
     await app.register(fastifyHelmet);
