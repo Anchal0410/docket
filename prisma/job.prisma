@@ -1,0 +1,47 @@
+// ============================================================
+// prisma/job.prisma
+// A unit of deferred work. id is a UUIDv7 supplied by the
+// application layer (see SubmitJobHandler), not the database.
+// ============================================================
+
+model Job {
+  id String @id @map("id") @db.Uuid
+
+  idempotencyKey String? @unique @map("idempotency_key")
+
+  type    String @map("type")
+  payload Json   @map("payload") @db.JsonB
+
+  // 0 = LOW, 1 = MEDIUM, 2 = HIGH
+  priority Int @default(1) @map("priority")
+
+  // status: PENDING | QUEUED | PROCESSING | COMPLETED | DEAD_LETTER | CANCELLED
+  // There is no separate FAILED/RETRY state — a retry is PROCESSING -> QUEUED
+  // with attempts incremented and lastError set (see docs/job-state-machine.md).
+  status String @default("PENDING") @map("status")
+
+  // Not claimable before this instant. PENDING jobs become QUEUED once
+  // runAt is reached — this is how delayed and scheduled jobs work.
+  runAt DateTime @default(now()) @map("run_at") @db.Timestamptz(6)
+
+  attempts    Int     @default(0) @map("attempts")
+  maxAttempts Int     @default(5) @map("max_attempts")
+  lastError   String? @map("last_error")
+
+  cancelRequested Boolean @default(false) @map("cancel_requested")
+
+  // Set while status = PROCESSING; cleared on ack, fail, or reclaim.
+  lockedBy       String?   @map("locked_by")
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+
+  result Json? @map("result") @db.JsonB
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, priority, runAt])
+  @@index([lockedBy])
+  @@map("jobs")
+}

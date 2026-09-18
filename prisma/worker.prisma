@@ -1,0 +1,23 @@
+// ============================================================
+// prisma/worker.prisma
+// A worker process's registration and liveness. workerId is a
+// natural key the worker itself supplies at registration.
+// ============================================================
+
+model Worker {
+  workerId String @id @map("worker_id")
+
+  capabilities String[] @map("capabilities")
+  concurrency  Int      @default(1) @map("concurrency")
+
+  // status: ONLINE | DEAD
+  status String @default("ONLINE") @map("status")
+
+  currentJobCount Int @default(0) @map("current_job_count")
+
+  registeredAt    DateTime @default(now()) @map("registered_at") @db.Timestamptz(6)
+  lastHeartbeatAt DateTime @default(now()) @map("last_heartbeat_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@map("workers")
+}
