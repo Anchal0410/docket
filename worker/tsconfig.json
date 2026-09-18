@@ -1,0 +1,11 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "../dist/worker",
+        "rootDir": "./",
+        "experimentalDecorators": false,
+        "emitDecoratorMetadata": false
+    },
+    "include": ["src/**/*"],
+    "exclude": ["**/*.spec.ts"]
+}

@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: docket
+      POSTGRES_PASSWORD: docket
+      POSTGRES_DB: docket
+    ports:
+      - "5544:5432"
+    volumes:
+      - docket-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docket"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ["pnpm", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://docket:docket@postgres:5432/docket
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  broker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 4400
+      SWAGGER_ENABLED: "true"
+      DATABASE_URL: postgresql://docket:docket@postgres:5432/docket
+      # snappier recovery for the local worker-crash demo
+      QUEUE_DEAD_WORKER_THRESHOLD_SECONDS: "10"
+      QUEUE_RECOVERY_INTERVAL_MS: "2000"
+    ports:
+      - "4400:4400"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://localhost:4400/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "dist/worker/src/main.js"]
+    environment:
+      WORKER_CAPABILITIES: send_email,generate_report
+      WORKER_CONCURRENCY: "2"
+      WORKER_HEARTBEAT_INTERVAL_MS: "3000"
+      BROKER_URL: http://broker:4400
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  docket-postgres:
