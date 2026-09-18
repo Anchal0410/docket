@@ -9,9 +9,12 @@ import {
     Post,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { SkipThrottle } from "@nestjs/throttler";
 
 import { AckJobCommand } from "../application/commands/ack-job.command.js";
 import { AckJobHandler } from "../application/commands/ack-job.handler.js";
+import { CancelJobCommand } from "../application/commands/cancel-job.command.js";
+import { CancelJobHandler } from "../application/commands/cancel-job.handler.js";
 import { ClaimJobsCommand } from "../application/commands/claim-jobs.command.js";
 import { ClaimJobsHandler } from "../application/commands/claim-jobs.handler.js";
 import { FailJobCommand } from "../application/commands/fail-job.command.js";
@@ -43,6 +46,7 @@ export class JobsController {
         private readonly ackJobHandler: AckJobHandler,
         private readonly failJobHandler: FailJobHandler,
         private readonly renewLeaseHandler: RenewLeaseHandler,
+        private readonly cancelJobHandler: CancelJobHandler,
     ) {}
 
     @Post()
@@ -64,6 +68,7 @@ export class JobsController {
 
     @Post("claim")
     @HttpCode(HttpStatus.OK)
+    @SkipThrottle() // polled continuously by every worker — not abuse traffic
     @ApiOperation({ summary: "Claim a batch of queued jobs (worker)" })
     async claim(@Body() dto: ClaimJobsDto): Promise<JobResponseDto[]> {
         const jobs = await this.claimJobsHandler.execute(
@@ -81,6 +86,7 @@ export class JobsController {
 
     @Post(":id/ack")
     @HttpCode(HttpStatus.OK)
+    @SkipThrottle()
     @ApiOperation({ summary: "Acknowledge a job as completed (worker)" })
     async ack(
         @Param("id", ParseUUIDPipe) id: string,
@@ -94,6 +100,7 @@ export class JobsController {
 
     @Post(":id/fail")
     @HttpCode(HttpStatus.OK)
+    @SkipThrottle()
     @ApiOperation({ summary: "Report a job as failed (worker)" })
     async fail(
         @Param("id", ParseUUIDPipe) id: string,
@@ -107,6 +114,7 @@ export class JobsController {
 
     @Post(":id/lease/renew")
     @HttpCode(HttpStatus.OK)
+    @SkipThrottle()
     @ApiOperation({ summary: "Extend a job's lease (worker, long handler)" })
     async renewLease(
         @Param("id", ParseUUIDPipe) id: string,
@@ -114,6 +122,21 @@ export class JobsController {
     ): Promise<JobResponseDto> {
         const job = await this.renewLeaseHandler.execute(
             new RenewLeaseCommand(id, dto.workerId),
+        );
+        return toJobResponseDto(job);
+    }
+
+    @Post(":id/cancel")
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary:
+            "Cancel a job (producer). PENDING/QUEUED cancels outright; PROCESSING only flags cancelRequested.",
+    })
+    async cancel(
+        @Param("id", ParseUUIDPipe) id: string,
+    ): Promise<JobResponseDto> {
+        const job = await this.cancelJobHandler.execute(
+            new CancelJobCommand(id),
         );
         return toJobResponseDto(job);
     }

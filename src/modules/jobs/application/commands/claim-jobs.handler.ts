@@ -41,6 +41,9 @@ export class ClaimJobsHandler {
             capabilities: worker.capabilities,
             batchSize: Math.min(Math.max(1, cmd.batchSize), maxBatch),
             leaseSeconds: this.config.getOrThrow<number>("queue.leaseSeconds"),
+            typeConcurrencyLimits: this.config.getOrThrow<Record<string, number>>(
+                "queue.typeConcurrencyLimits",
+            ),
         });
     }
 }

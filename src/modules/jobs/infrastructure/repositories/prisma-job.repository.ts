@@ -32,6 +32,7 @@ interface JobRow {
     payload: unknown;
     priority: number;
     status: string;
+    cancel_requested: boolean;
     run_at: Date;
     attempts: number;
     max_attempts: number;
@@ -78,7 +79,45 @@ export class PrismaJobRepository implements IJobRepository {
     async claim(input: ClaimJobsInput): Promise<JobVO[]> {
         const { workerId, capabilities, batchSize, leaseSeconds } = input;
 
+        // Fleet-wide per-type concurrency caps, as a VALUES list to join
+        // against. A type absent here is unrestricted. Postgres won't
+        // accept an empty VALUES list, so an empty map falls back to one
+        // row that can never match a real job type.
+        const limitEntries = Object.entries(input.typeConcurrencyLimits);
+        const limitsValues =
+            limitEntries.length > 0
+                ? Prisma.join(
+                      limitEntries.map(
+                          ([type, max]) => Prisma.sql`(${type}, ${max})`,
+                      ),
+                  )
+                : Prisma.sql`(NULL, NULL)`;
+
         const rows = await this.prisma.$queryRaw<JobRow[]>(Prisma.sql`
+            WITH candidates AS (
+                SELECT id, type, priority, run_at
+                FROM jobs
+                WHERE status = 'QUEUED'
+                  AND run_at <= now()
+                  AND type = ANY(${capabilities}::text[])
+                FOR UPDATE SKIP LOCKED
+            ),
+            ranked AS (
+                SELECT id, type, priority, run_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY type ORDER BY priority DESC, run_at ASC
+                    ) AS type_rank
+                FROM candidates
+            ),
+            limits(type, max_concurrent) AS (
+                VALUES ${limitsValues}
+            ),
+            processing_counts AS (
+                SELECT type, COUNT(*)::int AS cnt
+                FROM jobs
+                WHERE status = 'PROCESSING'
+                GROUP BY type
+            )
             UPDATE jobs SET
                 status = 'PROCESSING',
                 locked_by = ${workerId},
@@ -87,12 +126,15 @@ export class PrismaJobRepository implements IJobRepository {
                 started_at = COALESCE(started_at, now()),
                 updated_at = now()
             WHERE id IN (
-                SELECT id FROM jobs
-                WHERE status = 'QUEUED'
-                  AND run_at <= now()
-                  AND type = ANY(${capabilities}::text[])
-                ORDER BY priority DESC, run_at ASC
-                FOR UPDATE SKIP LOCKED
+                SELECT ranked.id
+                FROM ranked
+                LEFT JOIN limits ON limits.type = ranked.type
+                LEFT JOIN processing_counts ON processing_counts.type = ranked.type
+                WHERE limits.max_concurrent IS NULL
+                   OR ranked.type_rank <= (
+                        limits.max_concurrent - COALESCE(processing_counts.cnt, 0)
+                   )
+                ORDER BY ranked.priority DESC, ranked.run_at ASC
                 LIMIT ${batchSize}
             )
             RETURNING *;
@@ -246,6 +288,30 @@ export class PrismaJobRepository implements IJobRepository {
         );
     }
 
+    async cancel(jobId: string): Promise<JobVO> {
+        const cancelled = await this.prisma.job.updateMany({
+            where: { id: jobId, status: { in: ["PENDING", "QUEUED"] } },
+            data: { status: "CANCELLED" },
+        });
+
+        if (cancelled.count === 0) {
+            const flagged = await this.prisma.job.updateMany({
+                where: { id: jobId, status: "PROCESSING" },
+                data: { cancelRequested: true },
+            });
+            if (flagged.count === 0) {
+                throw AppError.conflict(
+                    "Job cannot be cancelled — it's already COMPLETED, " +
+                        "DEAD_LETTER, or CANCELLED, or does not exist.",
+                );
+            }
+        }
+
+        return this.toDomain(
+            await this.prisma.job.findUniqueOrThrow({ where: { id: jobId } }),
+        );
+    }
+
     private isDue(runAt: Date): boolean {
         return runAt.getTime() <= Date.now();
     }
@@ -258,6 +324,7 @@ export class PrismaJobRepository implements IJobRepository {
             payload: row.payload as Record<string, unknown>,
             priority: row.priority as JobPriority,
             status: row.status as JobStatus,
+            cancelRequested: row.cancelRequested,
             runAt: row.runAt,
             attempts: row.attempts,
             maxAttempts: row.maxAttempts,
@@ -277,6 +344,7 @@ export class PrismaJobRepository implements IJobRepository {
             payload: r.payload as Record<string, unknown>,
             priority: r.priority as JobPriority,
             status: r.status as JobStatus,
+            cancelRequested: r.cancel_requested,
             runAt: r.run_at,
             attempts: r.attempts,
             maxAttempts: r.max_attempts,

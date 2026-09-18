@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { APP_GUARD } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
 
 import {
@@ -8,6 +10,7 @@ import {
     databaseConfig,
     queueConfig,
     sharedPinoHttpOptions,
+    throttleConfig,
     validationSchema,
 } from "./config/index.js";
 import { HealthModule } from "./health/health.module.js";
@@ -19,18 +22,30 @@ import { WorkersModule } from "./modules/workers/workers.module.js";
     imports: [
         ConfigModule.forRoot({
             isGlobal: true,
-            load: [appConfig, databaseConfig, queueConfig],
+            load: [appConfig, databaseConfig, queueConfig, throttleConfig],
             validationSchema,
             validationOptions: { abortEarly: true },
         }),
 
         LoggerModule.forRoot({ pinoHttp: sharedPinoHttpOptions }),
         ScheduleModule.forRoot(),
+        ThrottlerModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                throttlers: [
+                    {
+                        ttl: config.getOrThrow<number>("throttle.ttlMs"),
+                        limit: config.getOrThrow<number>("throttle.limit"),
+                    },
+                ],
+            }),
+        }),
 
         DatabaseModule,
         HealthModule,
         WorkersModule,
         JobsModule,
     ],
+    providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

@@ -23,4 +23,9 @@ export default registerAs("queue", () => ({
         process.env.QUEUE_PROMOTION_INTERVAL_MS ?? "1000",
         10,
     ),
+    // Fleet-wide cap on simultaneous PROCESSING jobs, per type. Types not
+    // listed here are unrestricted. e.g. {"send_email":5}.
+    typeConcurrencyLimits: JSON.parse(
+        process.env.QUEUE_TYPE_CONCURRENCY_LIMITS ?? "{}",
+    ) as Record<string, number>,
 }));

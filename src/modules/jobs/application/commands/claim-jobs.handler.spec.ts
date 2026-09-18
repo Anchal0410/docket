@@ -10,7 +10,11 @@ import { ClaimJobsHandler } from "./claim-jobs.handler.js";
 
 const config = {
     getOrThrow: (key: string) =>
-        ({ "queue.claimMaxBatch": 10, "queue.leaseSeconds": 30 })[key],
+        ({
+            "queue.claimMaxBatch": 10,
+            "queue.leaseSeconds": 30,
+            "queue.typeConcurrencyLimits": { send_email: 5 },
+        })[key],
 } as unknown as ConfigService;
 
 function makeWorker(overrides: Partial<WorkerVO> = {}): WorkerVO {
@@ -43,6 +47,7 @@ describe("ClaimJobsHandler", () => {
             capabilities: ["send_email", "generate_report"],
             batchSize: 10,
             leaseSeconds: 30,
+            typeConcurrencyLimits: { send_email: 5 },
         });
     });
 

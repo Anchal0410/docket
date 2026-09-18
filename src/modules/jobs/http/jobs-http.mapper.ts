@@ -8,6 +8,7 @@ export function toJobResponseDto(job: JobVO): JobResponseDto {
         payload: job.payload,
         priority: job.priority,
         status: job.status,
+        cancelRequested: job.cancelRequested,
         runAt: job.runAt.toISOString(),
         attempts: job.attempts,
         maxAttempts: job.maxAttempts,

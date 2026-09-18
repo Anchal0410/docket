@@ -15,4 +15,10 @@ export const validationSchema = Joi.object({
     QUEUE_DEAD_WORKER_THRESHOLD_SECONDS: Joi.number().min(1).default(15),
     QUEUE_RECOVERY_INTERVAL_MS: Joi.number().min(500).default(5000),
     QUEUE_PROMOTION_INTERVAL_MS: Joi.number().min(200).default(1000),
+    // JSON map of job type -> max PROCESSING at once, fleet-wide, e.g.
+    // {"send_email":5}. Types not listed are unrestricted.
+    QUEUE_TYPE_CONCURRENCY_LIMITS: Joi.string().default("{}"),
+
+    RATE_LIMIT_TTL_MS: Joi.number().min(1000).default(60000),
+    RATE_LIMIT_MAX: Joi.number().min(1).default(100),
 });

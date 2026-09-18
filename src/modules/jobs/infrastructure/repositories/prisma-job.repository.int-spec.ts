@@ -5,7 +5,13 @@ import type { PrismaAdapter } from "#infra/database/adapters/prisma.adapter.js";
 
 import { PrismaJobRepository } from "./prisma-job.repository.js";
 
-const lease = { workerId: "w", capabilities: ["send_email"], batchSize: 10, leaseSeconds: 30 };
+const lease = {
+    workerId: "w",
+    capabilities: ["send_email"],
+    batchSize: 10,
+    leaseSeconds: 30,
+    typeConcurrencyLimits: {},
+};
 
 describe("PrismaJobRepository.claim (integration)", () => {
     let db: TestDb;
@@ -72,6 +78,58 @@ describe("PrismaJobRepository.claim (integration)", () => {
         const [first] = await repo.claim({ ...lease, batchSize: 1 });
 
         expect(first.priority).toBe(2);
+    });
+
+    it("caps concurrent claims of a type at its configured fleet-wide limit", async () => {
+        await seed(Array.from({ length: 8 }, () => ({ type: "send_email" })));
+
+        const claimed = await repo.claim({
+            ...lease,
+            batchSize: 10,
+            typeConcurrencyLimits: { send_email: 3 },
+        });
+
+        expect(claimed).toHaveLength(3);
+        const stillQueued = await db.prisma.job.count({
+            where: { status: "QUEUED" },
+        });
+        expect(stillQueued).toBe(5);
+    });
+
+    it("accounts for jobs already PROCESSING when applying the limit", async () => {
+        await seed(Array.from({ length: 5 }, () => ({ type: "send_email" })));
+        // 2 already in flight from an earlier claim.
+        await repo.claim({
+            ...lease,
+            workerId: "w0",
+            batchSize: 2,
+            typeConcurrencyLimits: { send_email: 5 },
+        });
+
+        const claimed = await repo.claim({
+            ...lease,
+            workerId: "w1",
+            batchSize: 10,
+            typeConcurrencyLimits: { send_email: 5 },
+        });
+
+        // 5 total allowed, 2 already processing -> only 3 more claimable.
+        expect(claimed).toHaveLength(3);
+    });
+
+    it("leaves unrestricted types unaffected by another type's limit", async () => {
+        await seed([{ type: "send_email" }, { type: "send_email" }]);
+        await seed([{ type: "generate_report" }]);
+
+        const claimed = await repo.claim({
+            ...lease,
+            capabilities: ["send_email", "generate_report"],
+            batchSize: 10,
+            typeConcurrencyLimits: { send_email: 0 },
+        });
+
+        expect(claimed).toHaveLength(1);
+        expect(claimed[0].type).toBe("generate_report");
     });
 
     it("does not claim jobs whose run_at is in the future", async () => {
@@ -191,6 +249,39 @@ describe("PrismaJobRepository.claim (integration)", () => {
         });
         expect(reclaimed.status).toBe("QUEUED");
         expect(reclaimed.lockedBy).toBeNull();
+    });
+
+    it("cancel moves a QUEUED job straight to CANCELLED", async () => {
+        const job = await db.prisma.job.create({
+            data: {
+                id: uuidv7(),
+                type: "send_email",
+                payload: {},
+                status: "QUEUED",
+            },
+        });
+
+        const cancelled = await repo.cancel(job.id);
+
+        expect(cancelled.status).toBe("CANCELLED");
+    });
+
+    it("cancel only flags cancelRequested for a PROCESSING job", async () => {
+        await seed([{}]);
+        const [claimed] = await repo.claim({ ...lease, batchSize: 1 });
+
+        const result = await repo.cancel(claimed.id);
+
+        expect(result.status).toBe("PROCESSING");
+        expect(result.cancelRequested).toBe(true);
+    });
+
+    it("cancel rejects a job that's already terminal", async () => {
+        await seed([{}]);
+        const [claimed] = await repo.claim({ ...lease, batchSize: 1 });
+        await repo.ack(claimed.id, "w", null);
+
+        await expect(repo.cancel(claimed.id)).rejects.toThrow();
     });
 
     it("reclaimFromDeadWorkers is a no-op for an empty list", async () => {

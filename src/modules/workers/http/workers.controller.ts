@@ -8,6 +8,7 @@ import {
     Post,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { SkipThrottle } from "@nestjs/throttler";
 
 import { DeregisterWorkerCommand } from "../application/commands/deregister-worker.command.js";
 import { DeregisterWorkerHandler } from "../application/commands/deregister-worker.handler.js";
@@ -21,6 +22,7 @@ import { toWorkerResponseDto } from "./workers-http.mapper.js";
 
 @ApiTags("Workers")
 @Controller("workers")
+@SkipThrottle() // every endpoint here is internal worker traffic (register/heartbeat/deregister), not producer-facing
 export class WorkersController {
     constructor(
         private readonly registerWorkerHandler: RegisterWorkerHandler,

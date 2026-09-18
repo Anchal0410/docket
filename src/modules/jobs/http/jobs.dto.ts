@@ -121,6 +121,11 @@ export class JobResponseDto {
         ],
     })
     status!: string;
+    @ApiProperty({
+        description:
+            "Best-effort: only meaningful while status is PROCESSING. Nothing forces the handler to stop.",
+    })
+    cancelRequested!: boolean;
     @ApiProperty() runAt!: string;
     @ApiProperty() attempts!: number;
     @ApiProperty() maxAttempts!: number;

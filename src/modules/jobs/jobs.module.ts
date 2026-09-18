@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import { WorkersModule } from "#modules/workers/workers.module.js";
 
 import { AckJobHandler } from "./application/commands/ack-job.handler.js";
+import { CancelJobHandler } from "./application/commands/cancel-job.handler.js";
 import { ClaimJobsHandler } from "./application/commands/claim-jobs.handler.js";
 import { FailJobHandler } from "./application/commands/fail-job.handler.js";
 import { RenewLeaseHandler } from "./application/commands/renew-lease.handler.js";
@@ -27,6 +28,7 @@ import { JobRecoveryScheduler } from "./infrastructure/schedulers/job-recovery.s
         AckJobHandler,
         FailJobHandler,
         RenewLeaseHandler,
+        CancelJobHandler,
         ListDeadLetterJobsHandler,
         RetryDeadLetterJobHandler,
         JobRecoveryScheduler,

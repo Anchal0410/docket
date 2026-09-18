@@ -18,6 +18,12 @@ export interface ClaimJobsInput {
     capabilities: string[];
     batchSize: number;
     leaseSeconds: number;
+    /**
+     * Fleet-wide cap on simultaneous PROCESSING jobs, per type — counted
+     * across every worker, not just this one. Types not present here are
+     * unrestricted.
+     */
+    typeConcurrencyLimits: Record<string, number>;
 }
 
 export interface FailJobInput {
@@ -54,7 +60,9 @@ export interface IJobRepository {
      * run_at asc, marking each PROCESSING with a lease of `leaseSeconds` and
      * incrementing `attempts`. Uses SELECT ... FOR UPDATE SKIP LOCKED, so
      * concurrent claims never block each other and never hand out the same
-     * job twice.
+     * job twice. A type present in `typeConcurrencyLimits` is further capped
+     * so the number already PROCESSING plus what this call claims never
+     * exceeds the limit, fleet-wide.
      */
     claim(input: ClaimJobsInput): Promise<JobVO[]>;
 
@@ -120,4 +128,15 @@ export interface IJobRepository {
      * (including if it doesn't exist).
      */
     retryDeadLetterJob(jobId: string): Promise<JobVO>;
+
+    /**
+     * Cancel a job. PENDING/QUEUED jobs move straight to CANCELLED — they
+     * were never picked up, so this is unconditional. A PROCESSING job
+     * can't be force-stopped (there's no way to interrupt a running
+     * handler), so it's just flagged with cancelRequested for visibility;
+     * it still runs to completion. Throws AppError.conflict for a job
+     * that's already COMPLETED, DEAD_LETTER, or CANCELLED (including if it
+     * doesn't exist).
+     */
+    cancel(jobId: string): Promise<JobVO>;
 }
