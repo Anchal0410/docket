@@ -69,6 +69,11 @@ export class MetricsService {
         help: "PENDING jobs promoted to QUEUED once due",
         registers: [this.registry],
     });
+    private readonly submissionsRejected = new Counter({
+        name: "docket_submissions_rejected_total",
+        help: "Submissions rejected for backpressure (backlog at QUEUE_MAX_BACKLOG_DEPTH)",
+        registers: [this.registry],
+    });
 
     constructor(prisma: PrismaAdapter) {
         collectDefaultMetrics({ register: this.registry });
@@ -147,6 +152,10 @@ export class MetricsService {
 
     incPromotionPromoted(count: number): void {
         if (count > 0) this.promotionPromoted.inc(count);
+    }
+
+    incSubmissionsRejected(): void {
+        this.submissionsRejected.inc();
     }
 
     metrics(): Promise<string> {

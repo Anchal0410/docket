@@ -32,4 +32,8 @@ export class AppError extends Error {
     static internal(message = "Internal server error"): AppError {
         return new AppError("INTERNAL_ERROR", 500, message);
     }
+
+    static serviceUnavailable(message: string): AppError {
+        return new AppError("SERVICE_UNAVAILABLE", 503, message);
+    }
 }

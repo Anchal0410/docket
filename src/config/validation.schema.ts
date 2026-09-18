@@ -18,6 +18,7 @@ export const validationSchema = Joi.object({
     // JSON map of job type -> max PROCESSING at once, fleet-wide, e.g.
     // {"send_email":5}. Types not listed are unrestricted.
     QUEUE_TYPE_CONCURRENCY_LIMITS: Joi.string().default("{}"),
+    QUEUE_MAX_BACKLOG_DEPTH: Joi.number().min(1).default(10000),
 
     RATE_LIMIT_TTL_MS: Joi.number().min(1000).default(60000),
     RATE_LIMIT_MAX: Joi.number().min(1).default(100),

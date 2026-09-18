@@ -28,4 +28,8 @@ export default registerAs("queue", () => ({
     typeConcurrencyLimits: JSON.parse(
         process.env.QUEUE_TYPE_CONCURRENCY_LIMITS ?? "{}",
     ) as Record<string, number>,
+    // Backpressure: reject submissions once PENDING+QUEUED backlog hits
+    // this. Protects the system from unbounded growth when producers
+    // outpace the fleet -- a signal to slow down, not just silent buildup.
+    maxBacklogDepth: parseInt(process.env.QUEUE_MAX_BACKLOG_DEPTH ?? "10000", 10),
 }));

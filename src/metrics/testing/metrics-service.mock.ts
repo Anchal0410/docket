@@ -15,6 +15,7 @@ export function makeMetricsServiceMock(
         incRecoveryReclaimedFromDeadWorkers: jest.fn(),
         incRecoveryReclaimedExpiredLeases: jest.fn(),
         incPromotionPromoted: jest.fn(),
+        incSubmissionsRejected: jest.fn(),
         metrics: jest.fn(),
         contentType: "text/plain",
         ...overrides,

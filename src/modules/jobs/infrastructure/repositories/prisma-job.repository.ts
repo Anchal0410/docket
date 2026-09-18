@@ -320,6 +320,12 @@ export class PrismaJobRepository implements IJobRepository {
         );
     }
 
+    countBacklog(): Promise<number> {
+        return this.prisma.job.count({
+            where: { status: { in: ["PENDING", "QUEUED"] } },
+        });
+    }
+
     private isDue(runAt: Date): boolean {
         return runAt.getTime() <= Date.now();
     }

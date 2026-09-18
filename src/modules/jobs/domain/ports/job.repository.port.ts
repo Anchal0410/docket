@@ -142,4 +142,12 @@ export interface IJobRepository {
      * doesn't exist).
      */
     cancel(jobId: string): Promise<JobVO>;
+
+    /**
+     * Count unprocessed backlog: jobs currently PENDING or QUEUED. Used to
+     * enforce backpressure at submission time — PROCESSING isn't backlog
+     * (already being worked), and terminal statuses (COMPLETED/
+     * DEAD_LETTER/CANCELLED) aren't either.
+     */
+    countBacklog(): Promise<number>;
 }

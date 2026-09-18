@@ -4,12 +4,13 @@ A distributed job queue: a broker service (NestJS + Fastify + Postgres) that
 accepts jobs over HTTP and hands them to a fleet of workers that register
 their capabilities, claim work, and report back.
 
-Build plan through Phase 5: submit jobs (with priority and delayed/scheduled
-run times), register workers, claim/ack/fail with a visibility-timeout
-lease, retries with exponential backoff, a dead-letter state with a browse
-and manual-retry API, heartbeats, automatic recovery of jobs abandoned by
-workers that crash, fleet-wide per-type concurrency caps, cancellation, API
-rate limiting, and Prometheus/Grafana metrics.
+Build plan complete through Phase 6: submit jobs (with priority and
+delayed/scheduled run times), register workers, claim/ack/fail with a
+visibility-timeout lease, retries with exponential backoff, a dead-letter
+state with a browse and manual-retry API, heartbeats, automatic recovery of
+jobs abandoned by workers that crash, fleet-wide per-type concurrency caps,
+cancellation, API rate limiting, Prometheus/Grafana metrics, submission
+backpressure, and load/chaos-tested under `scripts/`.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the stack/structure
 decisions and core mechanisms, and [docs/PLAN.md](docs/PLAN.md) for the
@@ -44,11 +45,22 @@ API docs at `/docs` when `SWAGGER_ENABLED=true`. Health check at `/health`.
 docker compose up --build           # postgres + migrate + broker + prometheus + grafana + a worker
 docker compose up -d --scale worker=4
 ./scripts/demo-worker-crash.sh      # kill 2 of 4 workers mid-batch — zero jobs lost
+./scripts/demo-postgres-restart.sh  # restart Postgres mid-flight — broker survives, zero jobs lost
+JOBS=5000 CONCURRENCY=50 ./scripts/load-test.sh   # throughput under real concurrent load
 ```
 
 `docker kill`ed workers stay down (Docker suppresses the restart policy on an
 external kill); the recovery loop reclaims their jobs anyway. Bring the fleet
 back with `docker compose up -d --scale worker=4`.
+
+## Backpressure
+
+`submit` rejects with `503` once the unprocessed backlog (`PENDING` +
+`QUEUED`) reaches `QUEUE_MAX_BACKLOG_DEPTH` (default 10000) — a global
+ceiling, not per-type: it protects total system load, which is a different
+concern from the per-type *execution* fairness `claim`'s concurrency caps
+already provide. `load-test.sh` reports any `503`s separately from `429`s
+(the HTTP rate limiter) so the two protections stay distinguishable.
 
 ## Observability
 

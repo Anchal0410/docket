@@ -1,0 +1,8 @@
+# Override used only by scripts/load-test.sh: raises the HTTP rate limit so
+# the test measures actual submission/processing throughput instead of
+# mostly measuring the rate limiter (which is already covered by its own
+# unit test and is expected, correct behavior at the default limit).
+services:
+  broker:
+    environment:
+      RATE_LIMIT_MAX: "1000000"

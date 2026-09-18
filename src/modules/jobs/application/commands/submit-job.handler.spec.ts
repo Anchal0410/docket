@@ -1,3 +1,6 @@
+import type { ConfigService } from "@nestjs/config";
+
+import { AppError } from "#common/errors/index.js";
 import { makeMetricsServiceMock } from "#metrics/testing/metrics-service.mock.js";
 
 import type { SubmitJobInput } from "../../domain/ports/job.repository.port.js";
@@ -5,6 +8,11 @@ import type { JobVO } from "../../domain/value-objects/job.vo.js";
 import { makeJobRepositoryMock } from "../testing/job-repository.mock.js";
 import { SubmitJobCommand } from "./submit-job.command.js";
 import { SubmitJobHandler } from "./submit-job.handler.js";
+
+const config = {
+    getOrThrow: (key: string) =>
+        ({ "queue.maxBacklogDepth": 10000 })[key],
+} as unknown as ConfigService;
 
 function makeJob(overrides: Partial<JobVO> = {}): JobVO {
     return {
@@ -32,9 +40,10 @@ describe("SubmitJobHandler", () => {
         const job = makeJob();
         const repo = makeJobRepositoryMock({
             submit: jest.fn().mockResolvedValue(job),
+            countBacklog: jest.fn().mockResolvedValue(0),
         });
         const metrics = makeMetricsServiceMock();
-        const handler = new SubmitJobHandler(repo, metrics);
+        const handler = new SubmitJobHandler(repo, config, metrics);
 
         const result = await handler.execute(
             new SubmitJobCommand("send_email", { to: "user@example.com" }),
@@ -53,8 +62,13 @@ describe("SubmitJobHandler", () => {
     it("passes the idempotency key through when provided", async () => {
         const repo = makeJobRepositoryMock({
             submit: jest.fn().mockResolvedValue(makeJob()),
+            countBacklog: jest.fn().mockResolvedValue(0),
         });
-        const handler = new SubmitJobHandler(repo, makeMetricsServiceMock());
+        const handler = new SubmitJobHandler(
+            repo,
+            config,
+            makeMetricsServiceMock(),
+        );
 
         await handler.execute(
             new SubmitJobCommand(
@@ -71,5 +85,19 @@ describe("SubmitJobHandler", () => {
         expect(input.idempotencyKey).toBe("payment_123");
         expect(input.priority).toBe(2);
         expect(input.maxAttempts).toBe(3);
+    });
+
+    it("rejects with 503 and records it when the backlog is at capacity", async () => {
+        const repo = makeJobRepositoryMock({
+            countBacklog: jest.fn().mockResolvedValue(10000),
+        });
+        const metrics = makeMetricsServiceMock();
+        const handler = new SubmitJobHandler(repo, config, metrics);
+
+        await expect(
+            handler.execute(new SubmitJobCommand("send_email", {})),
+        ).rejects.toThrow(AppError);
+        expect(repo.submit).not.toHaveBeenCalled();
+        expect(metrics.incSubmissionsRejected).toHaveBeenCalledTimes(1);
     });
 });

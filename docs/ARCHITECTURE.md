@@ -75,3 +75,8 @@ No separate FAILED/RETRY state — a retry is the PROCESSING → QUEUED edge wit
 - **Metrics**: `/metrics` (Prometheus format) exposes job/worker counters
   and gauges; queue depth and worker counts are live-queried on each
   scrape rather than tracked as running counters.
+- **Backpressure**: `submit` rejects with `503` once `PENDING + QUEUED`
+  backlog hits `QUEUE_MAX_BACKLOG_DEPTH` — a global ceiling. Deliberately
+  not per-type: it protects total system load, a different concern from
+  the per-type *execution* fairness the concurrency caps above already
+  provide.
