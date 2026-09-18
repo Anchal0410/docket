@@ -1,0 +1,23 @@
+{
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "../src",
+    "testRegex": ".*\\.int-spec\\.ts$",
+    "transform": {
+        "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+        "^(\\.{1,2}/.*)\\.js$": "$1",
+        "^#common/(.*)\\.js$": "<rootDir>/common/$1",
+        "^#common/(.*)$": "<rootDir>/common/$1",
+        "^#config/(.*)\\.js$": "<rootDir>/config/$1",
+        "^#config/(.*)$": "<rootDir>/config/$1",
+        "^#infra/(.*)\\.js$": "<rootDir>/infrastructure/$1",
+        "^#infra/(.*)$": "<rootDir>/infrastructure/$1",
+        "^#modules/(.*)\\.js$": "<rootDir>/modules/$1",
+        "^#modules/(.*)$": "<rootDir>/modules/$1",
+        "^#db$": "<rootDir>/../generated/prisma-client/index.js",
+        "^#db/(.*)$": "<rootDir>/../generated/prisma-client/$1"
+    },
+    "testEnvironment": "node",
+    "testTimeout": 120000
+}
