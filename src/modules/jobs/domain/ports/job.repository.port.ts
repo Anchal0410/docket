@@ -62,7 +62,10 @@ export interface IJobRepository {
      * concurrent claims never block each other and never hand out the same
      * job twice. A type present in `typeConcurrencyLimits` is further capped
      * so the number already PROCESSING plus what this call claims never
-     * exceeds the limit, fleet-wide.
+     * exceeds the limit, fleet-wide — which can mean this returns fewer
+     * than `batchSize` jobs even when more are QUEUED and due, rather than
+     * widening the locked scan to backfill (that would let one claim call
+     * lock far more rows than it uses, starving concurrent claimers).
      */
     claim(input: ClaimJobsInput): Promise<JobVO[]>;
 

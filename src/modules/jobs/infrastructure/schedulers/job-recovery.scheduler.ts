@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { SchedulerRegistry } from "@nestjs/schedule";
 
+import { MetricsService } from "#metrics/metrics.service.js";
 import {
     WORKER_REPOSITORY,
     type IWorkerRepository,
@@ -40,6 +41,7 @@ export class JobRecoveryScheduler implements OnModuleInit {
         @Inject(WORKER_REPOSITORY) private readonly workers: IWorkerRepository,
         private readonly config: ConfigService,
         private readonly schedulerRegistry: SchedulerRegistry,
+        private readonly metrics: MetricsService,
     ) {}
 
     onModuleInit(): void {
@@ -58,6 +60,10 @@ export class JobRecoveryScheduler implements OnModuleInit {
             const dead = await this.workers.markStaleWorkersDead(threshold);
             const fromDead = await this.jobs.reclaimFromDeadWorkers(dead);
             const expired = await this.jobs.reclaimExpiredLeases();
+
+            this.metrics.incRecoveryDeadWorkers(dead.length);
+            this.metrics.incRecoveryReclaimedFromDeadWorkers(fromDead);
+            this.metrics.incRecoveryReclaimedExpiredLeases(expired);
 
             if (dead.length || fromDead || expired) {
                 this.logger.log(

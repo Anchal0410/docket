@@ -1,6 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { uuidv7 } from "uuidv7";
 
+import { MetricsService } from "#metrics/metrics.service.js";
+
 import {
     JOB_REPOSITORY,
     type IJobRepository,
@@ -13,10 +15,11 @@ export class SubmitJobHandler {
     constructor(
         @Inject(JOB_REPOSITORY)
         private readonly jobs: IJobRepository,
+        private readonly metrics: MetricsService,
     ) {}
 
-    execute(cmd: SubmitJobCommand): Promise<JobVO> {
-        return this.jobs.submit({
+    async execute(cmd: SubmitJobCommand): Promise<JobVO> {
+        const job = await this.jobs.submit({
             id: uuidv7(),
             type: cmd.type,
             payload: cmd.payload,
@@ -25,5 +28,7 @@ export class SubmitJobHandler {
             maxAttempts: cmd.maxAttempts,
             idempotencyKey: cmd.idempotencyKey,
         });
+        this.metrics.incJobsSubmitted(job.type);
+        return job;
     }
 }

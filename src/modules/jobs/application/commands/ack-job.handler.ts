@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { MetricsService } from "#metrics/metrics.service.js";
+
 import {
     JOB_REPOSITORY,
     type IJobRepository,
@@ -12,9 +14,12 @@ export class AckJobHandler {
     constructor(
         @Inject(JOB_REPOSITORY)
         private readonly jobs: IJobRepository,
+        private readonly metrics: MetricsService,
     ) {}
 
-    execute(cmd: AckJobCommand): Promise<JobVO> {
-        return this.jobs.ack(cmd.jobId, cmd.workerId, cmd.result);
+    async execute(cmd: AckJobCommand): Promise<JobVO> {
+        const job = await this.jobs.ack(cmd.jobId, cmd.workerId, cmd.result);
+        this.metrics.incJobsCompleted(job.type);
+        return job;
     }
 }

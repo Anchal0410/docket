@@ -27,6 +27,7 @@ structure and the mechanisms it's built on.
 | Single-package repo mirroring orion's hexagonal conventions, not a multi-package workspace | Matches tooling and layering already in use — `domain/application/infrastructure/http` per module, Symbol-token ports, `#`-import aliases |
 | Worker (`worker/`) is plain TypeScript, zero dependencies, no NestJS | It's a polling CLI loop, not a server — Nest's DI buys nothing there |
 | Jest, not Vitest; Testcontainers for the SKIP LOCKED path | Matches orion's test runner; a mocked ORM can't verify real row-locking concurrency |
+| `prom-client` + Prometheus/Grafana in Compose, not a hosted SaaS | Zero cost, fully local, consistent with the rest of the stack; queue depth and worker counts are live-queried on scrape rather than maintained as counters, so they can't drift |
 
 ## Core mechanisms
 
@@ -62,3 +63,15 @@ No separate FAILED/RETRY state — a retry is the PROCESSING → QUEUED edge wit
   resubmitting returns the same job) and execution-time (handlers get
   `jobId`/`attempt` to dedupe their own side effects; delivery is
   at-least-once by design, never exactly-once).
+- **Fleet-wide concurrency**: `claim` ranks candidates per type with a
+  window function and caps how many it hands out against
+  `QUEUE_TYPE_CONCURRENCY_LIMITS`, counting jobs already `PROCESSING`
+  across every worker — a soft cap (exact per call and across sequential
+  claims; a small race window exists under truly concurrent claims for the
+  same type).
+- **Cancellation**: `PENDING`/`QUEUED` cancels outright. `PROCESSING` only
+  flags `cancelRequested` — a running handler can't be force-stopped, so
+  this is visibility, not enforcement.
+- **Metrics**: `/metrics` (Prometheus format) exposes job/worker counters
+  and gauges; queue depth and worker counts are live-queried on each
+  scrape rather than tracked as running counters.

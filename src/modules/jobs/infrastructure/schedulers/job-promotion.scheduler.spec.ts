@@ -2,6 +2,8 @@ import { Logger } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
 import type { SchedulerRegistry } from "@nestjs/schedule";
 
+import { makeMetricsServiceMock } from "#metrics/testing/metrics-service.mock.js";
+
 import { makeJobRepositoryMock } from "../../application/testing/job-repository.mock.js";
 import { JobPromotionScheduler } from "./job-promotion.scheduler.js";
 
@@ -22,9 +24,11 @@ describe("JobPromotionScheduler.sweep", () => {
             promotePendingJobs: jest.fn().mockResolvedValue(3),
         });
 
-        await new JobPromotionScheduler(jobs, config, registry).sweep();
+        const metrics = makeMetricsServiceMock();
+        await new JobPromotionScheduler(jobs, config, registry, metrics).sweep();
 
         expect(jobs.promotePendingJobs).toHaveBeenCalledTimes(1);
+        expect(metrics.incPromotionPromoted).toHaveBeenCalledWith(3);
     });
 
     it("does not overlap a slow sweep with the next tick", async () => {
@@ -37,7 +41,12 @@ describe("JobPromotionScheduler.sweep", () => {
                     }),
             ),
         });
-        const scheduler = new JobPromotionScheduler(jobs, config, registry);
+        const scheduler = new JobPromotionScheduler(
+            jobs,
+            config,
+            registry,
+            makeMetricsServiceMock(),
+        );
 
         const first = scheduler.sweep();
         await scheduler.sweep(); // should return immediately, no-op

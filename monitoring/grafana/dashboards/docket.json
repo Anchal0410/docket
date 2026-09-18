@@ -1,0 +1,113 @@
+{
+    "title": "Docket",
+    "uid": "docket-overview",
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5s",
+    "time": { "from": "now-15m", "to": "now" },
+    "panels": [
+        {
+            "id": 1,
+            "title": "Queue depth by status",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+            "datasource": { "type": "prometheus", "uid": "Prometheus" },
+            "targets": [
+                {
+                    "expr": "docket_queue_depth",
+                    "legendFormat": "{{status}}"
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "title": "Workers by status",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+            "datasource": { "type": "prometheus", "uid": "Prometheus" },
+            "targets": [
+                {
+                    "expr": "docket_workers",
+                    "legendFormat": "{{status}}"
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "title": "Job throughput (per second)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+            "datasource": { "type": "prometheus", "uid": "Prometheus" },
+            "targets": [
+                {
+                    "expr": "rate(docket_jobs_submitted_total[1m])",
+                    "legendFormat": "submitted {{type}}"
+                },
+                {
+                    "expr": "rate(docket_jobs_completed_total[1m])",
+                    "legendFormat": "completed {{type}}"
+                },
+                {
+                    "expr": "rate(docket_jobs_failed_total[1m])",
+                    "legendFormat": "failed (retried) {{type}}"
+                },
+                {
+                    "expr": "rate(docket_jobs_dead_lettered_total[1m])",
+                    "legendFormat": "dead-lettered {{type}}"
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "title": "Recovery & promotion activity",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+            "datasource": { "type": "prometheus", "uid": "Prometheus" },
+            "targets": [
+                {
+                    "expr": "rate(docket_recovery_dead_workers_total[1m])",
+                    "legendFormat": "workers marked dead"
+                },
+                {
+                    "expr": "rate(docket_recovery_reclaimed_from_dead_workers_total[1m])",
+                    "legendFormat": "reclaimed from dead workers"
+                },
+                {
+                    "expr": "rate(docket_recovery_reclaimed_expired_leases_total[1m])",
+                    "legendFormat": "reclaimed expired leases"
+                },
+                {
+                    "expr": "rate(docket_promotion_promoted_total[1m])",
+                    "legendFormat": "PENDING promoted"
+                }
+            ]
+        },
+        {
+            "id": 5,
+            "title": "Claim batch size (avg over 5m)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+            "datasource": { "type": "prometheus", "uid": "Prometheus" },
+            "targets": [
+                {
+                    "expr": "rate(docket_claim_batch_size_sum[5m]) / rate(docket_claim_batch_size_count[5m])",
+                    "legendFormat": "avg jobs per claim"
+                }
+            ]
+        },
+        {
+            "id": 6,
+            "title": "Jobs cancelled (per second)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+            "datasource": { "type": "prometheus", "uid": "Prometheus" },
+            "targets": [
+                {
+                    "expr": "rate(docket_jobs_cancelled_total[1m])",
+                    "legendFormat": "{{type}}"
+                }
+            ]
+        }
+    ]
+}

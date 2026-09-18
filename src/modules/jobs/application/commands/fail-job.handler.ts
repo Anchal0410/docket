@@ -1,6 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
+import { MetricsService } from "#metrics/metrics.service.js";
+
 import {
     JOB_REPOSITORY,
     type IJobRepository,
@@ -14,10 +16,11 @@ export class FailJobHandler {
         @Inject(JOB_REPOSITORY)
         private readonly jobs: IJobRepository,
         private readonly config: ConfigService,
+        private readonly metrics: MetricsService,
     ) {}
 
-    execute(cmd: FailJobCommand): Promise<JobVO> {
-        return this.jobs.fail({
+    async execute(cmd: FailJobCommand): Promise<JobVO> {
+        const job = await this.jobs.fail({
             jobId: cmd.jobId,
             workerId: cmd.workerId,
             error: cmd.error,
@@ -30,5 +33,12 @@ export class FailJobHandler {
                 ),
             },
         });
+
+        if (job.status === "DEAD_LETTER") {
+            this.metrics.incJobsDeadLettered(job.type);
+        } else {
+            this.metrics.incJobsFailed(job.type);
+        }
+        return job;
     }
 }

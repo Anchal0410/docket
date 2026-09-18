@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
 import { AppError } from "#common/errors/index.js";
+import { MetricsService } from "#metrics/metrics.service.js";
 import {
     WORKER_REPOSITORY,
     type IWorkerRepository,
@@ -22,6 +23,7 @@ export class ClaimJobsHandler {
         @Inject(WORKER_REPOSITORY)
         private readonly workers: IWorkerRepository,
         private readonly config: ConfigService,
+        private readonly metrics: MetricsService,
     ) {}
 
     async execute(cmd: ClaimJobsCommand): Promise<JobVO[]> {
@@ -36,7 +38,7 @@ export class ClaimJobsHandler {
 
         const maxBatch = this.config.getOrThrow<number>("queue.claimMaxBatch");
 
-        return this.jobs.claim({
+        const jobs = await this.jobs.claim({
             workerId: worker.workerId,
             capabilities: worker.capabilities,
             batchSize: Math.min(Math.max(1, cmd.batchSize), maxBatch),
@@ -45,5 +47,7 @@ export class ClaimJobsHandler {
                 "queue.typeConcurrencyLimits",
             ),
         });
+        this.metrics.observeClaimBatchSize(jobs.length);
+        return jobs;
     }
 }

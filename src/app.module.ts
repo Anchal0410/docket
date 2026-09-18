@@ -15,6 +15,7 @@ import {
 } from "./config/index.js";
 import { HealthModule } from "./health/health.module.js";
 import { DatabaseModule } from "./infrastructure/database/database.module.js";
+import { MetricsModule } from "./metrics/metrics.module.js";
 import { JobsModule } from "./modules/jobs/jobs.module.js";
 import { WorkersModule } from "./modules/workers/workers.module.js";
 
@@ -43,6 +44,7 @@ import { WorkersModule } from "./modules/workers/workers.module.js";
 
         DatabaseModule,
         HealthModule,
+        MetricsModule,
         WorkersModule,
         JobsModule,
     ],

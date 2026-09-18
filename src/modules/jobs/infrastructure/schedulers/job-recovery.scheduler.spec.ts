@@ -2,6 +2,7 @@ import { Logger } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
 import type { SchedulerRegistry } from "@nestjs/schedule";
 
+import { makeMetricsServiceMock } from "#metrics/testing/metrics-service.mock.js";
 import { makeWorkerRepositoryMock } from "#modules/workers/application/testing/worker-repository.mock.js";
 
 import { makeJobRepositoryMock } from "../../application/testing/job-repository.mock.js";
@@ -42,7 +43,14 @@ describe("JobRecoveryScheduler.sweep", () => {
             }),
         });
 
-        await new JobRecoveryScheduler(jobs, workers, config, registry).sweep();
+        const metrics = makeMetricsServiceMock();
+        await new JobRecoveryScheduler(
+            jobs,
+            workers,
+            config,
+            registry,
+            metrics,
+        ).sweep();
 
         expect(calls).toEqual([
             "markStaleWorkersDead",
@@ -50,6 +58,9 @@ describe("JobRecoveryScheduler.sweep", () => {
             "reclaimExpiredLeases",
         ]);
         expect(workers.markStaleWorkersDead).toHaveBeenCalledWith(15);
+        expect(metrics.incRecoveryDeadWorkers).toHaveBeenCalledWith(1);
+        expect(metrics.incRecoveryReclaimedFromDeadWorkers).toHaveBeenCalledWith(2);
+        expect(metrics.incRecoveryReclaimedExpiredLeases).toHaveBeenCalledWith(1);
     });
 
     it("does not overlap a slow sweep with the next tick", async () => {
@@ -66,7 +77,13 @@ describe("JobRecoveryScheduler.sweep", () => {
             reclaimFromDeadWorkers: jest.fn().mockResolvedValue(0),
             reclaimExpiredLeases: jest.fn().mockResolvedValue(0),
         });
-        const scheduler = new JobRecoveryScheduler(jobs, workers, config, registry);
+        const scheduler = new JobRecoveryScheduler(
+            jobs,
+            workers,
+            config,
+            registry,
+            makeMetricsServiceMock(),
+        );
 
         const first = scheduler.sweep();
         await scheduler.sweep(); // should return immediately, no-op

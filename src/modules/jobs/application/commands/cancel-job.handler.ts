@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { MetricsService } from "#metrics/metrics.service.js";
+
 import {
     JOB_REPOSITORY,
     type IJobRepository,
@@ -12,9 +14,14 @@ export class CancelJobHandler {
     constructor(
         @Inject(JOB_REPOSITORY)
         private readonly jobs: IJobRepository,
+        private readonly metrics: MetricsService,
     ) {}
 
-    execute(cmd: CancelJobCommand): Promise<JobVO> {
-        return this.jobs.cancel(cmd.jobId);
+    async execute(cmd: CancelJobCommand): Promise<JobVO> {
+        const job = await this.jobs.cancel(cmd.jobId);
+        if (job.status === "CANCELLED") {
+            this.metrics.incJobsCancelled(job.type);
+        }
+        return job;
     }
 }

@@ -1,6 +1,7 @@
 import type { ConfigService } from "@nestjs/config";
 
 import { AppError } from "#common/errors/index.js";
+import { makeMetricsServiceMock } from "#metrics/testing/metrics-service.mock.js";
 import type { WorkerVO } from "#modules/workers/domain/value-objects/worker.vo.js";
 import { makeWorkerRepositoryMock } from "#modules/workers/application/testing/worker-repository.mock.js";
 
@@ -38,7 +39,8 @@ describe("ClaimJobsHandler", () => {
         const workers = makeWorkerRepositoryMock({
             findById: jest.fn().mockResolvedValue(makeWorker()),
         });
-        const handler = new ClaimJobsHandler(jobs, workers, config);
+        const metrics = makeMetricsServiceMock();
+        const handler = new ClaimJobsHandler(jobs, workers, config, metrics);
 
         await handler.execute(new ClaimJobsCommand("worker-1", 999));
 
@@ -49,6 +51,7 @@ describe("ClaimJobsHandler", () => {
             leaseSeconds: 30,
             typeConcurrencyLimits: { send_email: 5 },
         });
+        expect(metrics.observeClaimBatchSize).toHaveBeenCalledWith(0);
     });
 
     it("rejects a claim from an unregistered worker", async () => {
@@ -56,7 +59,12 @@ describe("ClaimJobsHandler", () => {
         const workers = makeWorkerRepositoryMock({
             findById: jest.fn().mockResolvedValue(null),
         });
-        const handler = new ClaimJobsHandler(jobs, workers, config);
+        const handler = new ClaimJobsHandler(
+            jobs,
+            workers,
+            config,
+            makeMetricsServiceMock(),
+        );
 
         await expect(
             handler.execute(new ClaimJobsCommand("ghost", 1)),

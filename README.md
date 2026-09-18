@@ -4,11 +4,12 @@ A distributed job queue: a broker service (NestJS + Fastify + Postgres) that
 accepts jobs over HTTP and hands them to a fleet of workers that register
 their capabilities, claim work, and report back.
 
-Build plan through Phase 3: submit jobs (with priority and delayed/scheduled
+Build plan through Phase 5: submit jobs (with priority and delayed/scheduled
 run times), register workers, claim/ack/fail with a visibility-timeout
 lease, retries with exponential backoff, a dead-letter state with a browse
-and manual-retry API, heartbeats, and automatic recovery of jobs abandoned
-by workers that crash.
+and manual-retry API, heartbeats, automatic recovery of jobs abandoned by
+workers that crash, fleet-wide per-type concurrency caps, cancellation, API
+rate limiting, and Prometheus/Grafana metrics.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the stack/structure
 decisions and core mechanisms, and [docs/PLAN.md](docs/PLAN.md) for the
@@ -40,7 +41,7 @@ API docs at `/docs` when `SWAGGER_ENABLED=true`. Health check at `/health`.
 ## Docker Compose
 
 ```bash
-docker compose up --build           # postgres + migrate + broker + a worker
+docker compose up --build           # postgres + migrate + broker + prometheus + grafana + a worker
 docker compose up -d --scale worker=4
 ./scripts/demo-worker-crash.sh      # kill 2 of 4 workers mid-batch — zero jobs lost
 ```
@@ -48,6 +49,19 @@ docker compose up -d --scale worker=4
 `docker kill`ed workers stay down (Docker suppresses the restart policy on an
 external kill); the recovery loop reclaims their jobs anyway. Bring the fleet
 back with `docker compose up -d --scale worker=4`.
+
+## Observability
+
+Prometheus scrapes the broker's `/metrics` every 5s (`monitoring/prometheus.yml`).
+Grafana auto-provisions that Prometheus as its datasource and loads a
+ready-made dashboard (`monitoring/grafana/dashboards/docket.json`) — queue
+depth by status, worker fleet by status, job throughput (submitted/
+completed/failed/dead-lettered/cancelled), recovery and promotion sweep
+activity, and average claim batch size.
+
+- Grafana: http://localhost:3001 (anonymous access, no login)
+- Prometheus: http://localhost:9090
+- Raw metrics: http://localhost:4400/metrics
 
 ## Commands
 
@@ -76,6 +90,13 @@ pnpm db:generate      # regenerate Prisma client after schema changes
 | `POST /jobs/:id/lease/renew` | worker | extend the lease for a long-running handler |
 | `GET /dead-letter-jobs` | operator | list dead-lettered jobs, paginated |
 | `POST /dead-letter-jobs/:id/retry` | operator | requeue a dead-lettered job with attempts reset |
+| `POST /jobs/:id/cancel` | producer | cancel outright (PENDING/QUEUED), or flag cancelRequested (PROCESSING) |
+| `GET /metrics` | Prometheus | scrape endpoint (Prometheus exposition format) |
+
+`submit`/`get`/dead-letter/`cancel` are rate-limited (`RATE_LIMIT_MAX` per
+`RATE_LIMIT_TTL_MS`, default 100/min); worker-internal endpoints
+(`claim`/`ack`/`fail`/`lease/renew`/`register`/`heartbeat`/deregister) are
+exempt, since the fleet polls them continuously by design.
 
 ## Worker-failure recovery
 

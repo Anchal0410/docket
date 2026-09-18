@@ -13,6 +13,7 @@ function makeJob(): JobVO {
         payload: {},
         priority: 1,
         status: "COMPLETED",
+        cancelRequested: false,
         runAt: new Date(),
         attempts: 1,
         maxAttempts: 5,

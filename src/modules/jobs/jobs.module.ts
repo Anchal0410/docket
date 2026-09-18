@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { MetricsModule } from "#metrics/metrics.module.js";
 import { WorkersModule } from "#modules/workers/workers.module.js";
 
 import { AckJobHandler } from "./application/commands/ack-job.handler.js";
@@ -19,7 +20,7 @@ import { JobPromotionScheduler } from "./infrastructure/schedulers/job-promotion
 import { JobRecoveryScheduler } from "./infrastructure/schedulers/job-recovery.scheduler.js";
 
 @Module({
-    imports: [WorkersModule],
+    imports: [WorkersModule, MetricsModule],
     controllers: [JobsController, DeadLetterJobsController],
     providers: [
         SubmitJobHandler,

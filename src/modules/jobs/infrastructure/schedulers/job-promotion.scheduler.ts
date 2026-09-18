@@ -7,6 +7,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { SchedulerRegistry } from "@nestjs/schedule";
 
+import { MetricsService } from "#metrics/metrics.service.js";
+
 import {
     JOB_REPOSITORY,
     type IJobRepository,
@@ -27,6 +29,7 @@ export class JobPromotionScheduler implements OnModuleInit {
         @Inject(JOB_REPOSITORY) private readonly jobs: IJobRepository,
         private readonly config: ConfigService,
         private readonly schedulerRegistry: SchedulerRegistry,
+        private readonly metrics: MetricsService,
     ) {}
 
     onModuleInit(): void {
@@ -40,6 +43,7 @@ export class JobPromotionScheduler implements OnModuleInit {
         this.running = true;
         try {
             const promoted = await this.jobs.promotePendingJobs();
+            this.metrics.incPromotionPromoted(promoted);
             if (promoted) {
                 this.logger.log(`${promoted} job(s) promoted PENDING -> QUEUED`);
             }

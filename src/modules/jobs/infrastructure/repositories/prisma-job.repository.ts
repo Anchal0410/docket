@@ -88,11 +88,19 @@ export class PrismaJobRepository implements IJobRepository {
             limitEntries.length > 0
                 ? Prisma.join(
                       limitEntries.map(
-                          ([type, max]) => Prisma.sql`(${type}, ${max})`,
+                          ([type, max]) => Prisma.sql`(${type}, ${max}::int)`,
                       ),
                   )
-                : Prisma.sql`(NULL, NULL)`;
+                : Prisma.sql`(NULL::text, NULL::int)`;
 
+        // FOR UPDATE SKIP LOCKED, capped at exactly batchSize -- same as
+        // before per-type limits existed. A type limit can still shrink the
+        // final claimed count below batchSize (some locked candidates get
+        // filtered out by the join below and simply stay QUEUED, their
+        // lock released at end of statement) -- accepted rather than
+        // widening the locked scan to backfill, since a wider scan is what
+        // let one claim call starve concurrent claimers of rows it locked
+        // but never used.
         const rows = await this.prisma.$queryRaw<JobRow[]>(Prisma.sql`
             WITH candidates AS (
                 SELECT id, type, priority, run_at
@@ -100,7 +108,9 @@ export class PrismaJobRepository implements IJobRepository {
                 WHERE status = 'QUEUED'
                   AND run_at <= now()
                   AND type = ANY(${capabilities}::text[])
+                ORDER BY priority DESC, run_at ASC
                 FOR UPDATE SKIP LOCKED
+                LIMIT ${batchSize}
             ),
             ranked AS (
                 SELECT id, type, priority, run_at,
@@ -134,8 +144,6 @@ export class PrismaJobRepository implements IJobRepository {
                    OR ranked.type_rank <= (
                         limits.max_concurrent - COALESCE(processing_counts.cnt, 0)
                    )
-                ORDER BY ranked.priority DESC, ranked.run_at ASC
-                LIMIT ${batchSize}
             )
             RETURNING *;
         `);
