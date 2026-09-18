@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Docket — a distributed job queue, built from scratch</title>
+<meta name="description" content="A distributed job queue broker built in TypeScript: SKIP LOCKED claiming, lease + heartbeat recovery, backoff retries, fleet-wide concurrency caps, backpressure, and a full Prometheus/Grafana observability stack. Chaos- and load-tested, not just written." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="bg-grid" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="#top">
+      <span class="wordmark-icon">◧</span>Docket
+    </a>
+    <nav class="nav-links">
+      <a href="#mechanisms">Mechanisms</a>
+      <a href="#demo">Live demo</a>
+      <a href="#tested">Tested</a>
+      <a href="https://github.com/Anchal0410/docket" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ───────────────────────── Hero ───────────────────────── -->
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">A learning project, built to production-grade rigor</p>
+      <h1>A distributed job queue,<br />built <em>and proven</em> from scratch.</h1>
+      <p class="lede">
+        Not a wrapper around Redis or SQS — a broker service that implements
+        <code>SELECT&nbsp;…&nbsp;FOR&nbsp;UPDATE&nbsp;SKIP&nbsp;LOCKED</code> claiming,
+        lease-based recovery, exponential backoff, fleet-wide concurrency
+        control, and backpressure directly on Postgres. Then chaos-tested it
+        by actually killing the things that are supposed to survive.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#demo">Try it live →</a>
+        <a class="btn btn-ghost" href="https://github.com/Anchal0410/docket" target="_blank" rel="noopener">View source</a>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><strong>55</strong><span>tests passing</span></div>
+        <div class="stat"><strong>0</strong><span>jobs lost across 2 chaos scenarios</span></div>
+        <div class="stat"><strong>7</strong><span>phases shipped, each verified live</span></div>
+        <div class="stat"><strong>1</strong><span>storage engine — no Redis</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── What it is ───────────────────────── -->
+  <section class="section">
+    <div class="section-inner">
+      <h2>What it actually does</h2>
+      <p class="section-lede">
+        A producer submits work over HTTP. A fleet of independent worker
+        processes registers its capabilities, polls for jobs, and reports
+        back. The broker is the only thing that talks to Postgres — workers
+        never touch the database directly.
+      </p>
+      <div class="flow">
+        <div class="flow-node">
+          <span class="flow-label">Producer</span>
+          <span class="flow-sub">POST /jobs</span>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node flow-node-main">
+          <span class="flow-label">Broker</span>
+          <span class="flow-sub">NestJS · Fastify</span>
+        </div>
+        <div class="flow-arrow">↔</div>
+        <div class="flow-node">
+          <span class="flow-label">Postgres</span>
+          <span class="flow-sub">SKIP LOCKED</span>
+        </div>
+      </div>
+      <div class="flow flow-workers">
+        <div class="flow-arrow flow-arrow-down">↓ claim / ack / fail / heartbeat</div>
+      </div>
+      <div class="flow flow-workers">
+        <div class="flow-node flow-node-worker">Worker 1</div>
+        <div class="flow-node flow-node-worker">Worker 2</div>
+        <div class="flow-node flow-node-worker">Worker 3</div>
+        <div class="flow-node flow-node-worker">Worker N</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── Live demo ───────────────────────── -->
+  <section class="section section-demo" id="demo">
+    <div class="section-inner">
+      <h2>Try it live</h2>
+      <p class="section-lede">
+        This submits a real job to a live Docket broker and polls its actual
+        status. It's hosted on a free instance, so the <strong>first request
+        after a while can take up to a minute</strong> to wake up — that's
+        the free tier sleeping, not the broker being slow.
+      </p>
+
+      <div class="demo-panel">
+        <button class="btn btn-primary" id="demo-submit">Submit a demo job</button>
+        <div class="demo-status" id="demo-status" role="status" aria-live="polite">
+          <span class="demo-status-idle">Nothing running yet.</span>
+        </div>
+        <div class="demo-timeline" id="demo-timeline"></div>
+      </div>
+
+      <p class="demo-note">
+        Protected by the same rate limiter and backpressure ceiling covered
+        below — this is the real API, not a mock.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── Mechanisms ───────────────────────── -->
+  <section class="section" id="mechanisms">
+    <div class="section-inner">
+      <h2>The mechanisms, not just the marketing</h2>
+      <p class="section-lede">Six things that actually had to be gotten right.</p>
+
+      <div class="grid">
+        <article class="card">
+          <h3>Claim</h3>
+          <p><code>SELECT … FOR UPDATE SKIP LOCKED</code>. Concurrent claims never
+          block each other and never hand the same job to two workers — verified
+          with 10 concurrent claimers racing 50 jobs in a real Postgres integration
+          test, not mocked.</p>
+        </article>
+        <article class="card">
+          <h3>Lease + heartbeat recovery</h3>
+          <p>A claimed job gets a lease. Workers heartbeat every ~5s. A recovery
+          loop reclaims jobs from workers that go silent <em>and</em>, separately,
+          any job whose lease expired regardless of worker status — belt and
+          suspenders, on purpose.</p>
+        </article>
+        <article class="card">
+          <h3>Equal-jitter backoff</h3>
+          <p><code>base × 2^(attempts−1)</code>, capped, then randomized within the
+          upper half of that window — so a burst of failures doesn't retry in
+          lockstep and hammer whatever just went down.</p>
+        </article>
+        <article class="card">
+          <h3>Fleet-wide concurrency caps</h3>
+          <p>Per-type limits on simultaneous <code>PROCESSING</code> jobs, counted
+          across every worker combined — not just per-worker. Enforced with a
+          window-function ranking inside the same claim query, capped at exactly
+          <code>batchSize</code> so one claim call can't lock rows it'll never use.</p>
+        </article>
+        <article class="card">
+          <h3>Backpressure</h3>
+          <p>Submission gets rejected with <code>503</code> once the unprocessed
+          backlog hits a configurable ceiling — a global signal to slow down,
+          not silent unbounded growth.</p>
+        </article>
+        <article class="card">
+          <h3>Observability</h3>
+          <p>A real <code>/metrics</code> endpoint — job counters by type, live
+          queue-depth and worker-count gauges, claim-batch histograms — scraped by
+          Prometheus, rendered in an auto-provisioned Grafana dashboard.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── Chaos & load ───────────────────────── -->
+  <section class="section" id="tested">
+    <div class="section-inner">
+      <h2>Chaos- and load-tested, for real</h2>
+      <p class="section-lede">
+        Every one of these is the actual captured output of the demo scripts
+        in <code>scripts/</code> — nothing staged.
+      </p>
+
+      <div class="terminal-grid">
+        <div class="terminal">
+          <div class="terminal-title">scripts/demo-worker-crash.sh</div>
+          <pre><code>==&gt; fresh stack, 4 workers
+==&gt; submitting 240 jobs
+==&gt; killing 2 of 4 workers mid-flight
+==&gt; waiting for completion
+   completed=236 queued=0 processing=4
+   completed=240 queued=0 processing=0
+
+==&gt; 240 / 240 completed, 0 not completed
+PASS — killed 2 workers, zero jobs lost</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="terminal-title">scripts/demo-postgres-restart.sh</div>
+          <pre><code>==&gt; submitting 60 jobs
+==&gt; restarting postgres mid-flight
+   Container docket-postgres-1 Restarting
+   Container docket-postgres-1 Started
+==&gt; confirming the broker never went down
+   broker container running: true, health recovered: 1
+==&gt; waiting for all jobs to complete
+   completed=60
+
+==&gt; 60 / 60 completed after a mid-flight Postgres restart
+PASS — broker survived the DB outage without crashing</code></pre>
+        </div>
+
+        <div class="terminal">
+          <div class="terminal-title">scripts/load-test.sh</div>
+          <pre><code>==&gt; submitting 300 jobs, 30 concurrent
+==&gt; submitted: 300 accepted, 0 backpressure-rejected,
+    0 rate-limited, 0 other, in 7s
+    (~42 accepted/sec)
+==&gt; waiting for all accepted jobs to drain
+   completed=300 backlog=0 processing=0
+
+==&gt; 300 / 300 completed, 12s end-to-end
+    (~25 completed/sec sustained, 4 workers)
+PASS</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── Stack ───────────────────────── -->
+  <section class="section section-stack">
+    <div class="section-inner">
+      <h2>Stack</h2>
+      <ul class="badge-row">
+        <li>TypeScript</li>
+        <li>NestJS</li>
+        <li>Fastify</li>
+        <li>Postgres</li>
+        <li>Prisma 7</li>
+        <li>Docker Compose</li>
+        <li>Prometheus</li>
+        <li>Grafana</li>
+        <li>Jest</li>
+        <li>Testcontainers</li>
+      </ul>
+      <p class="stack-note">
+        No Redis, no message broker, no second storage engine — one Postgres
+        instance does durable queueing, locking, and concurrency control.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>Docket — a distributed job queue, built to learn distributed systems by actually building one.</span>
+    <a href="https://github.com/Anchal0410/docket" target="_blank" rel="noopener">github.com/Anchal0410/docket</a>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
